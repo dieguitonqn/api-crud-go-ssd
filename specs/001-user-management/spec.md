@@ -16,7 +16,7 @@
 - Q: How should the system treat duplicate email addresses when the same address is entered with different case or belongs to a deactivated account? → A: Email uniqueness is case-insensitive and applies to both active and deactivated accounts; no duplicate email address may exist across any user record.
 - Q: Can deactivated accounts be reactivated, and how should the last-active-administrator safeguard behave during concurrent deactivation or role-change attempts? → A: Deactivated accounts may be reactivated by administrators only; reactivation does not restore prior sessions, and a fresh authentication is required. Concurrent deactivation or role-change attempts must be rejected if they would leave zero active administrators, and that invariant must be enforced before the operation is committed.
 - Q: What are the authorization, pagination, filters, sorting, search, and secret-exclusion rules for the administrator user-listing endpoint? → A: The user list endpoint is restricted to authenticated administrators only. Results are always paginated with a default page size of 20 and a maximum page size of 100. Administrators may filter by role (admin/user) and active status (active/inactive), and search by name or email. Results are sorted by creation timestamp descending with the unique user identifier as a secondary sort key for deterministic ordering. Pagination metadata is always included. Non-administrators cannot access the listing endpoint, and authenticated regular users may access only their own account through the dedicated self-service endpoint. All responses exclude passwords, password hashes, session tokens, and other authentication secrets, and authorization and visibility rules are enforced server-side.
-- Q: May an administrator change their own role or deactivate their own account? → A: No. Administrators must never change their own role or deactivate their own account, regardless of how many active administrators exist. This restriction is independent of the last-active-administrator safeguard.
+- Q: May an administrator change their own role or deactivate their own account? → A: No. Administrators must never change their own role or deactivate their own account, regardless of the number of active administrators. This restriction is independent of the last-active-administrator safeguard.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -115,17 +115,16 @@ The platform must enforce identity verification, role-based permissions, and saf
 - **FR-016**: The system MUST maintain the required user record fields: unique identifier, email, name, role, active status, creation timestamp, and last modification timestamp.
 - **FR-017**: The system MUST treat authentication and authorization as separate security checks and MUST require both to succeed for protected account administration actions.
 - **FR-018**: The system MUST reject requests that attempt to create, update, or deactivate a user account without valid authorization.
-- **FR-019**: The system MUST prevent an administrator from deactivating or demoting themselves when doing so would leave no active administrator in the system.
-- **FR-020**: The system MUST prevent an administrator from changing their own role or deactivating their own account under any circumstance, regardless of how many active administrators remain.
-- **FR-021**: The system MUST revoke all active sessions for a deactivated account immediately upon deactivation and MUST deny access to that account until it is reactivated or otherwise re-provisioned.
-- **FR-022**: The system MUST allow authenticated administrators to reactivate a deactivated user account, but MUST require that user to authenticate again after reactivation.
-- **FR-023**: The system MUST reject any concurrent deactivation or role-change operation that would leave the system without at least one active administrator, even if the operation is otherwise valid in isolation.
-- **FR-024**: The system MUST provide a controlled, non-public mechanism for provisioning the initial administrator account, and MUST prevent unrestricted account creation after that initial provisioning step.
-- **FR-025**: The system MUST return paginated user list results with a default page size of 20, a maximum page size of 100, and pagination metadata in every response.
-- **FR-026**: The system MUST support optional filtering by role and active status, and MUST support searching by name or email for administrator user-list queries.
-- **FR-027**: The system MUST sort administrator user-list results by creation timestamp descending, using the unique user identifier as a secondary sort key to ensure deterministic order.
-- **FR-028**: The system MUST exclude passwords, password hashes, session tokens, and other authentication secrets from all user-list and user-detail responses, and MUST enforce authorization and visibility rules server-side.
-- **FR-029**: The system MUST allow authenticated regular users to access only their own account through the dedicated self-service endpoint and MUST deny access to the administrator listing endpoint.
+- **FR-019**: The system MUST prevent an administrator from changing their own role or deactivating their own account under any circumstance, regardless of how many active administrators remain.
+- **FR-020**: The system MUST revoke all active sessions for a deactivated account immediately upon deactivation and MUST deny access to that account until it is reactivated or otherwise re-provisioned.
+- **FR-021**: The system MUST allow authenticated administrators to reactivate a deactivated user account, but MUST require that user to authenticate again after reactivation.
+- **FR-022**: The system MUST reject any concurrent deactivation or role-change operation that would leave the system without at least one active administrator, even if the operation is otherwise valid in isolation.
+- **FR-023**: The system MUST provide a controlled, non-public mechanism for provisioning the initial administrator account, and MUST prevent unrestricted account creation after that initial provisioning step.
+- **FR-024**: The system MUST return paginated user list results with a default page size of 20, a maximum page size of 100, and pagination metadata in every response.
+- **FR-025**: The system MUST support optional filtering by role and active status, and MUST support searching by name or email for administrator user-list queries.
+- **FR-026**: The system MUST sort administrator user-list results by creation timestamp descending, using the unique user identifier as a secondary sort key to ensure deterministic order.
+- **FR-027**: The system MUST exclude passwords, password hashes, session tokens, and other authentication secrets from all user-list and user-detail responses, and MUST enforce authorization and visibility rules server-side.
+- **FR-028**: The system MUST allow authenticated regular users to access only their own account through the dedicated self-service endpoint and MUST deny access to the administrator listing endpoint.
 
 ### Business Rules
 
