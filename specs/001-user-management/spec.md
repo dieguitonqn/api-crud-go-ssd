@@ -16,7 +16,11 @@
 - Q: How should the system treat duplicate email addresses when the same address is entered with different case or belongs to a deactivated account? → A: Email uniqueness is case-insensitive and applies to both active and deactivated accounts; no duplicate email address may exist across any user record.
 - Q: Can deactivated accounts be reactivated, and how should the last-active-administrator safeguard behave during concurrent deactivation or role-change attempts? → A: Deactivated accounts may be reactivated by administrators only; reactivation does not restore prior sessions, and a fresh authentication is required. Concurrent deactivation or role-change attempts must be rejected if they would leave zero active administrators, and that invariant must be enforced before the operation is committed.
 - Q: What are the authorization, pagination, filters, sorting, search, and secret-exclusion rules for the administrator user-listing endpoint? → A: The user list endpoint is restricted to authenticated administrators only. Results are always paginated with a default page size of 20 and a maximum page size of 100. Administrators may filter by role (admin/user) and active status (active/inactive), and search by name or email. Results are sorted by creation timestamp descending with the unique user identifier as a secondary sort key for deterministic ordering. Pagination metadata is always included. Non-administrators cannot access the listing endpoint, and authenticated regular users may access only their own account through the dedicated self-service endpoint. All responses exclude passwords, password hashes, session tokens, and other authentication secrets, and authorization and visibility rules are enforced server-side.
-- Q: May an administrator change their own role or deactivate their own account? → A: No. Administrators must never change their own role or deactivate their own account, regardless of the number of active administrators. This restriction is independent of the last-active-administrator safeguard.
+- Q: May an administrator change their own role or deactivate their own account? → A: Historical (superseded clarification retained for traceability): this answer remains limited to role/account-state changes and does not govern administrator session-revocation authority defined in the authentication/session specification. Administrators must never change their own role or deactivate their own account, regardless of the number of active administrators. This restriction is independent of the last-active-administrator safeguard.
+
+### Session 2026-10-20
+- Q: How should the user-management domain treat an independently managed operation credential while preserving the login-password and account-governance rules? → A: User accounts may carry an independently managed operation credential, but operation-password lifecycle, validation, and reset flows are outside this feature. Creating a user account MUST NOT automatically activate an operation password. Deactivation MUST immediately disable the use of any associated operation credential. Reactivation MUST NOT automatically restore operation authorization. Administrators MUST NOT retrieve, inspect, or use another user's operation password. User-management responses MUST exclude operation credential hashes, reset secrets, and related sensitive material. Login-password changes and operation-password changes remain separate workflows; successful login-password changes revoke all existing user sessions.
+- Q: How is initial login-password provisioning governed for administrator-created accounts? → A: Login-password provisioning is separate from administrative account status. Administrators issue secure activation invitations that are single-use and expire. Invitations can be replaced or revoked by authorized administrators, and all invitation lifecycle actions are auditable. Account activation status, role, and profile updates MUST remain independent from invitation/provisioning state transitions.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -92,6 +96,9 @@ The platform must enforce identity verification, role-based permissions, and saf
 - What happens when an account is updated with a password change request in the same operation as a general profile update?
 - What happens when an administrator attempts to demote or deactivate themselves while another active administrator exists or does not exist?
 - What controlled, non-public mechanism provisions the initial administrator without enabling unrestricted account creation after startup?
+- What happens when a user account has an associated operation credential and that account is deactivated, reactivated, or subject to a password change?
+- What happens when an administrator attempts to retrieve or use another user's operation credential, even if the user is authorized to manage the account?
+- What server-side controls are required to ensure operation-credential state remains independent of the login-password lifecycle and user-profile updates?
 
 ## Requirements *(mandatory)*
 
@@ -125,6 +132,23 @@ The platform must enforce identity verification, role-based permissions, and saf
 - **FR-026**: The system MUST sort administrator user-list results by creation timestamp descending, using the unique user identifier as a secondary sort key to ensure deterministic order.
 - **FR-027**: The system MUST exclude passwords, password hashes, session tokens, and other authentication secrets from all user-list and user-detail responses, and MUST enforce authorization and visibility rules server-side.
 - **FR-028**: The system MUST allow authenticated regular users to access only their own account through the dedicated self-service endpoint and MUST deny access to the administrator listing endpoint.
+- **FR-029**: The system MUST allow user accounts to carry an independently managed operation credential distinct from the login password, without merging the two credential lifecycles.
+- **FR-030**: The system MUST NOT automatically activate an operation credential when a new user account is created.
+- **FR-031**: The system MUST immediately prevent the use of any associated operation credential when a user account is deactivated.
+- **FR-032**: The system MUST NOT automatically restore the ability to authorize critical operations when a user account is reactivated.
+- **FR-033**: The operation-password lifecycle, including provisioning, validation, reset, and revocation, belongs to the separate feature specification for critical operation authorization and is out of scope for this user-management feature.
+- **FR-034**: The system MUST prevent administrators from retrieving, inspecting, or using another user's operation credential or operation-password material through user-management APIs or administrative account flows.
+- **FR-035**: The system MUST exclude operation credential hashes, reset secrets, and any other sensitive operation-password material from all user-management responses and logs.
+- **FR-036**: The system MUST keep login-password changes separate from other user-profile updates and MUST reject requests that combine profile changes with password changes in a single general-purpose update flow.
+- **FR-037**: A successful login-password change MUST invalidate all previously established sessions for that user and MUST require the user to authenticate again before resuming authenticated access.
+- **FR-038**: Login-password changes and operation-password changes MUST remain separate workflows, and the system MUST not change one credential as a side effect of changing the other.
+- **FR-039**: Administrator-created user accounts MUST start with login credential provisioning pending and MUST require completion of the approved activation-invitation flow before successful password-based authentication is possible.
+- **FR-040**: The system MUST model account administrative status and login-credential provisioning status as separate governance dimensions, and changes in one MUST NOT implicitly mutate the other.
+- **FR-041**: Authorized administrators MUST be able to issue activation invitations for pending accounts, and each invitation MUST be single-use and expire automatically after a configured validity window.
+- **FR-042**: Authorized administrators MUST be able to replace or revoke outstanding activation invitations, and replaced or revoked invitations MUST become unusable immediately.
+- **FR-043**: The system MUST audit invitation issuance, replacement, revocation, successful redemption, and expiration events with actor, target account, timestamp, and outcome.
+- **FR-044**: A valid invitation redemption MUST allow the user to provision an initial compliant login password without exposing the password to administrators or normal administrative interfaces.
+- **FR-045**: The initial bootstrap administrator provisioning mechanism MUST be secure, non-public, auditable, and constrained to explicit initialization controls that prevent reuse after bootstrap completion.
 
 ### Business Rules
 
@@ -135,15 +159,24 @@ The platform must enforce identity verification, role-based permissions, and saf
 - Reactivated accounts MUST require fresh authentication; prior sessions must not be restored automatically.
 - Password data MUST be excluded from all user-facing responses.
 - Password change operations MUST be distinct from profile update operations.
+- Login-password changes MUST invalidate all existing sessions for the affected user, and the user MUST authenticate again before continuing with protected operations.
+- Operation-password state MUST remain separate from the login-password lifecycle and MUST never be activated, restored, or exposed through the user-profile management domain.
+- User accounts MAY have a separately managed operation credential, but that credential MUST be treated as a distinct authorization artifact whose lifecycle belongs to the critical-operation authorization feature rather than the general user-management feature.
+- Deactivating an account MUST immediately prevent use of any associated operation credential, and reactivation MUST NOT restore the ability to authorize critical operations automatically.
 - Administrators MUST not be able to change user roles or account states in a way that leaves the system without any active administrator.
 - Administrators MUST never change their own role or deactivate their own account, regardless of the number of active administrators. This restriction is independent of the last-active-administrator safeguard.
 - Administrators may update name, email, role, and active status only within the authorized policy; identifier, creation timestamp, and last modification timestamp are system-managed and immutable.
 - The system MUST provide a controlled, non-public initial administrator provisioning mechanism and MUST prevent unrestricted account creation after that initial provisioning step.
+- Newly created administrator-managed accounts MUST remain unable to authenticate with password credentials until a valid activation invitation is redeemed and initial password provisioning is completed.
+- Activation invitations for initial password provisioning MUST be single-use, expiring, administratively replaceable/revocable, and fully auditable.
+- Administrative account status management (active/inactive, role changes) MUST remain independent from login-credential provisioning status and invitation lifecycle state.
+- The initial bootstrap administrator provisioning mechanism MUST be secure, explicit, auditable, and non-reusable once completed.
 - The administrator user-listing endpoint MUST be restricted to authenticated administrators, while authenticated regular users may access only their own account through the dedicated self-service endpoint.
 - User listing MUST always be paginated, defaulting to 20 results and capping each page at 100; results MUST include pagination metadata and MUST be searchable by name or email and filterable by role and active status.
 - Listing results MUST default to creation timestamp descending order with the unique user identifier as a tie-breaker to maintain deterministic ordering.
 - Public self-registration MUST be excluded from all supported user-management flows.
 - Account status, role, and email are core business data that MUST be protected by authorization rules.
+- Operation credential hashes, reset secrets, and related sensitive material MUST never be exposed by user-management APIs or administrative responses.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -164,6 +197,10 @@ The platform must enforce identity verification, role-based permissions, and saf
 - **SC-007**: All user-management operations enforce the distinction between authentication and authorization, with protected actions denied when either requirement fails.
 - **SC-008**: The user-listing endpoint is accessible only to authenticated administrators, while non-administrator authenticated users are denied access and can access only their own account through the self-service endpoint; no password material or authentication secrets are included in any response.
 - **SC-009**: The system provides a controlled, non-public mechanism for initial administrator provisioning and prevents unrestricted account creation after that provisioning step.
+- **SC-010**: 100% of administrator-created accounts require successful redemption of a valid, single-use, unexpired activation invitation before first password-based authentication succeeds.
+- **SC-011**: 100% of revoked, replaced, expired, or previously redeemed activation invitations are rejected for initial login-password provisioning.
+- **SC-012**: Invitation issuance, replacement, revocation, expiration, and redemption events are always recorded with actor, target account, timestamp, and outcome.
+- **SC-013**: Account active/inactive state changes and login-credential provisioning changes remain independent, and account-state changes alone never produce successful authentication for accounts with pending credential provisioning.
 
 ## Assumptions
 
@@ -172,3 +209,4 @@ The platform must enforce identity verification, role-based permissions, and saf
 - Account lifecycle decisions are governed by the same approval and audit expectations as other enterprise access controls.
 - Password recovery, MFA, and external identity integration are out of scope for this version and are addressed separately.
 - The business expects a clear distinction between administrative account management and user self-service account access.
+- Initial login-password provisioning for administrator-created accounts is controlled through secure, administrator-governed activation invitations rather than public registration or administrator-known passwords.
